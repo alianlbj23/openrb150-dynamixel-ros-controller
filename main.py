@@ -117,7 +117,7 @@ class IPInputWindow(QWidget):
         self.current_ip = ""
         self.wheel_pub = None  # roslibpy.Topic for wheel
         self.arm_pub = None  # roslibpy.Topic for arm joints
-        self.arm_angles_pub = None  # roslibpy.Topic for arm angle array
+        self.arm_angles_float32multiarray_pub = None  # roslibpy.Topic for arm angle array
         self.ros = None  # roslibpy.Ros object
 
         base_dir = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
@@ -134,7 +134,7 @@ class IPInputWindow(QWidget):
             ros_topics = config.get("ros_topics", {})
             self.wheel_topic = ros_topics.get("wheel", "/car_C_rear_wheel")
             self.arm_topic = ros_topics.get("arm", "/robot_arm")
-            self.arm_angles_topic = ros_topics.get("arm_angles", "/robot_arm_angles")
+            self.arm_angles_float32multiarray_topic = ros_topics.get("arm_angles_float32multiarray", "/robot_arm_angles_float32multiarray")
 
         self.joint_sliders: dict[str, QSlider] = {}
         self.joint_labels: dict[str, QLabel] = {}
@@ -246,10 +246,10 @@ class IPInputWindow(QWidget):
 
                     self.arm_pub = roslibpy.Topic(self.ros, self.arm_topic, "trajectory_msgs/JointTrajectoryPoint")
                     self.arm_pub.advertise()
-                    self.arm_angles_pub = roslibpy.Topic(
-                        self.ros, self.arm_angles_topic, "std_msgs/Float32MultiArray"
+                    self.arm_angles_float32multiarray_pub = roslibpy.Topic(
+                        self.ros, self.arm_angles_float32multiarray_topic, "std_msgs/Float32MultiArray"
                     )
-                    self.arm_angles_pub.advertise()
+                    self.arm_angles_float32multiarray_pub.advertise()
 
                     print(f"[INFO] Connected to ROSBridge on attempt {attempt}")
                     return True, ""
@@ -274,12 +274,12 @@ class IPInputWindow(QWidget):
             except Exception as e:
                 print(f"Error unadvertising arm_pub: {e}")
             self.arm_pub = None
-        if self.arm_angles_pub:
+        if self.arm_angles_float32multiarray_pub:
             try:
-                self.arm_angles_pub.unadvertise()
+                self.arm_angles_float32multiarray_pub.unadvertise()
             except Exception as e:
-                print(f"Error unadvertising arm_angles_pub: {e}")
-            self.arm_angles_pub = None
+                print(f"Error unadvertising arm_angles_float32multiarray_pub: {e}")
+            self.arm_angles_float32multiarray_pub = None
 
         if self.ros and self.ros.is_connected:
             try:
@@ -371,14 +371,14 @@ class IPInputWindow(QWidget):
             }
         )
         self.arm_pub.publish(msg)
-        self.publish_arm_angles_array(joint_values)
+        self.publish_arm_angles_float32multiarray_array(joint_values)
 
-    def publish_arm_angles_array(self, joint_values):
-        if not (self.ros and self.ros.is_connected and self.arm_angles_pub):
-            print("[WARN] ROS not connected, skip arm_angles publish.")
+    def publish_arm_angles_float32multiarray_array(self, joint_values):
+        if not (self.ros and self.ros.is_connected and self.arm_angles_float32multiarray_pub):
+            print("[WARN] ROS not connected, skip arm_angles_float32multiarray publish.")
             return
         msg = roslibpy.Message({"layout": {"dim": [], "data_offset": 0}, "data": list(map(float, joint_values))})
-        self.arm_angles_pub.publish(msg)
+        self.arm_angles_float32multiarray_pub.publish(msg)
 
     def send_joint_command(self):
         if not self.connected:

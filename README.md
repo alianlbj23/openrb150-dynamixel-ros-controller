@@ -29,7 +29,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-## ROSBridge via Docker (ROS 2 Jazzy)
+## ROSBridge via Docker (ROS 2 Humble)
 
 You can start a ROSBridge websocket server in Docker:
 
@@ -38,7 +38,7 @@ python start_rosbridge_docker.py
 ```
 
 Defaults:
-- Image: `ros:jazzy-ros-base` (fallbacks are tried if missing)
+- Image: `ros:humble-ros-base` (fallbacks are tried if missing)
 - Container name: `rosbridge_humble`
 - Host port: `9090` (mapped to container `9090`)
 
@@ -66,14 +66,16 @@ docker run --rm -it --name rosbridge_humble -p 9090:9090 rosbridge:humble
 
 Edit `keyboard.yaml` to change topics, keyboard mappings, joint limits, and presets.
 
-Example sections:
+YAML parameters:
 
-- `ros_port`: default ROSBridge port
-- `ros_topics.wheel`: wheel command topic (Float32MultiArray)
-- `ros_topics.arm`: arm command topic (JointTrajectoryPoint)
-- `key_mappings`: keyboard key -> list of wheel speeds (degrees are not used here)
-- `arm_joint_limits`: slider ranges and default values (degrees)
-- `arm_joint_angle_presets`: button name -> list of joint angles (degrees)
+- `ros_port`: default ROSBridge port used by the UI
+- `ros_topics.wheel`: wheel command topic (`std_msgs/Float32MultiArray`)
+- `ros_topics.arm`: arm command topic (`trajectory_msgs/JointTrajectoryPoint`)
+- `ros_topics.arm_angles_float32multiarray`: arm angles array topic (`std_msgs/Float32MultiArray`)
+- `key_mappings`: keyboard key -> list of wheel speeds
+- `arm_joint_limits`: slider ranges and default values (degrees shown in UI)
+- `arm_joint_angle_presets`: button name -> list of joint angles (degrees shown in UI)
+- `arm_publish_in_radians`: `true` to convert degrees to radians before publishing arm topics, `false` to publish degrees as-is
 
 ## Usage
 

@@ -3,9 +3,9 @@ ros_port: 9090
 ros_topics:
   wheel: /car_C_rear_wheel
   arm: /robot_arm
-  arm_angles_float32multiarray: /robot_arm_angles
+  arm_angles_float32multiarray_float32multiarray: /robot_arm_angles_float32multiarray
 
-arm_publish_in_radians: false
+arm_publish_in_radians: true
 
 key_mappings:
   w: [30, 30, 30, 30]
