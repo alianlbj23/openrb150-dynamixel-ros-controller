@@ -17,37 +17,37 @@ key_mappings:
 
 arm_joint_limits:
   joint_1:
-    default: 90
+    default: 0
     min: 0
-    max: 180
+    max: 270
   joint_2:
-    default: 30
+    default: 0
     min: 0
-    max: 90
+    max: 270
   joint_3:
-    default: 160
+    default: 0
     min: 0
-    max: 150
+    max: 270
   joint_4:
-    default: 180
+    default: 0
     min: 0
-    max: 45
+    max: 270
   joint_5:
-    default: 10
+    default: 0
     min: 0
-    max: 180
+    max: 270
   joint_6:
-    default: 10
+    default: 0
     min: 0
-    max: 180
+    max: 270
   joint_7:
-    default: 10
+    default: 0
     min: 0
-    max: 180
+    max: 270
   joint_8:
-    default: 10
+    default: 0
     min: 0
-    max: 180
+    max: 270
 
 arm_joint_angle_presets:
   pose1_open: [90,180,90,180,270,180,270,90]
