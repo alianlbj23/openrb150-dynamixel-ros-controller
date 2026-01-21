@@ -1,7 +1,99 @@
-import sys
+#!/usr/bin/env python3
+from __future__ import annotations
+
 import os
+import sys
 import threading
+import subprocess
+import hashlib
+import math
+import time
+from pathlib import Path
+
+# ----------------------------
+# VENV BOOTSTRAP (auto venv + requirements + re-exec)
+# ----------------------------
+
+def _in_venv() -> bool:
+    return getattr(sys, "base_prefix", sys.prefix) != sys.prefix
+
+
+def _venv_python_path(venv_dir: str) -> str:
+    if os.name == "nt":
+        return os.path.join(venv_dir, "Scripts", "python.exe")
+    return os.path.join(venv_dir, "bin", "python")
+
+
+def _run_checked(cmd: list[str]) -> None:
+    print("[BOOTSTRAP]>", " ".join(cmd))
+    subprocess.check_call(cmd)
+
+
+def _ensure_pip(python_exe: str) -> None:
+    try:
+        subprocess.check_call(
+            [python_exe, "-m", "pip", "--version"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        _run_checked([python_exe, "-m", "ensurepip", "--upgrade"])
+        _run_checked([python_exe, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
+
+
+def _hash_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _ensure_venv_and_reexec():
+    if _in_venv():
+        return
+
+    base_dir = os.path.dirname(
+        sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__)
+    )
+    venv_dir = os.path.join(base_dir, ".venv")
+    req_path = os.path.join(base_dir, "requirements.txt")
+    hash_path = os.path.join(venv_dir, ".requirements_hash")
+
+    if not os.path.isdir(venv_dir):
+        _run_checked([sys.executable, "-m", "venv", venv_dir])
+
+    venv_python = _venv_python_path(venv_dir)
+    _ensure_pip(venv_python)
+
+    if os.path.exists(req_path):
+        req_hash = _hash_file(req_path)
+        old_hash = ""
+        if os.path.exists(hash_path):
+            try:
+                with open(hash_path, "r", encoding="utf-8") as f:
+                    old_hash = f.read().strip()
+            except Exception:
+                old_hash = ""
+
+        if req_hash != old_hash:
+            _run_checked([venv_python, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
+            _run_checked([venv_python, "-m", "pip", "install", "-r", req_path])
+            with open(hash_path, "w", encoding="utf-8") as f:
+                f.write(req_hash)
+    else:
+        print("[BOOTSTRAP][WARN] requirements.txt not found; running with venv anyway.")
+
+    os.execv(venv_python, [venv_python, os.path.abspath(__file__), *sys.argv[1:]])
+
+
+_ensure_venv_and_reexec()
+
+# ----------------------------
+# Regular imports (after venv ready)
+# ----------------------------
 import yaml
+import roslibpy
 from PyQt5.QtWidgets import (
     QApplication,
     QWidget,
@@ -16,9 +108,6 @@ from PyQt5.QtWidgets import (
     QScrollArea,
 )
 from PyQt5.QtCore import Qt
-import roslibpy
-import math
-import time
 
 
 class IPInputWindow(QWidget):
@@ -29,26 +118,24 @@ class IPInputWindow(QWidget):
         self.wheel_pub = None  # roslibpy.Topic for wheel
         self.arm_pub = None  # roslibpy.Topic for arm joints
         self.ros = None  # roslibpy.Ros object
-        
-        BASE_DIR = os.path.dirname(
-            sys.executable if getattr(sys, "frozen", False) else __file__
-        )
-        yaml_path = os.path.join(BASE_DIR, "keyboard.yaml")
 
-        with open(yaml_path, "r") as f:
-            config = yaml.safe_load(f)
+        base_dir = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
+        yaml_path = os.path.join(base_dir, "keyboard.yaml")
+
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
             self.key_map = config.get("key_mappings", {})
             self.joint_limits = config.get("arm_joint_limits", {})
             self.arm_presets = config.get("arm_joint_angle_presets", {})
-            self.rosbridge_port = config.get("ros_port", 9090)
-            
-            # Load topic names from yaml
+            self.rosbridge_port = int(config.get("ros_port", 9090))
+
             ros_topics = config.get("ros_topics", {})
             self.wheel_topic = ros_topics.get("wheel", "/car_C_rear_wheel")
             self.arm_topic = ros_topics.get("arm", "/robot_arm")
 
-        self.joint_sliders = {}
-        self.joint_labels = {}
+        self.joint_sliders: dict[str, QSlider] = {}
+        self.joint_labels: dict[str, QLabel] = {}
+        self._joint_timer: threading.Timer | None = None
 
         self.init_ui()
 
@@ -56,7 +143,7 @@ class IPInputWindow(QWidget):
         self.setWindowTitle("ROS Control Panel")
         self.setFixedSize(600, 600)
 
-        # IP input area
+        # IP input
         ip_label = QLabel("ROS Master IP:", self)
         self.ip_edit = QLineEdit(self)
         self.ip_edit.setPlaceholderText("e.g. 192.168.0.10")
@@ -64,19 +151,19 @@ class IPInputWindow(QWidget):
         ip_layout.addWidget(ip_label)
         ip_layout.addWidget(self.ip_edit)
 
-        # Port input area
+        # Port input
         port_label = QLabel("ROSBridge Port:", self)
         self.port_edit = QLineEdit(self)
-        self.port_edit.setText(str(self.rosbridge_port)) # Set default value
+        self.port_edit.setText(str(self.rosbridge_port))
         port_layout = QHBoxLayout()
         port_layout.addWidget(port_label)
         port_layout.addWidget(self.port_edit)
 
-        # Connect/Disconnect button
+        # Connect button
         self.btn_connect = QPushButton("Connect", self)
         self.btn_connect.clicked.connect(self.on_connect_click)
 
-        # Current IP label
+        # Current connection label
         self.current_ip_label = QLabel("", self)
         self.current_ip_label.setVisible(False)
 
@@ -85,15 +172,15 @@ class IPInputWindow(QWidget):
         self.key_label.setAlignment(Qt.AlignCenter)
         self.key_label.setStyleSheet("font-size: 18px;")
 
-        # Layout
+        # Main layout
         layout = QVBoxLayout()
         layout.addLayout(ip_layout)
-        layout.addLayout(port_layout) # Add port layout
+        layout.addLayout(port_layout)
         layout.addWidget(self.btn_connect)
         layout.addWidget(self.current_ip_label)
         layout.addWidget(self.key_label)
 
-        # Joint controls
+        # Reset joints button
         self.btn_reset_joints = QPushButton("Reset Joints", self)
         self.btn_reset_joints.clicked.connect(self.reset_all_joint_sliders)
         self.btn_reset_joints.setVisible(False)
@@ -106,12 +193,11 @@ class IPInputWindow(QWidget):
         self.preset_buttons_widget.setVisible(False)
         for preset_name in self.arm_presets.keys():
             btn = QPushButton(preset_name, self)
-            btn.clicked.connect(
-                lambda _, name=preset_name: self.on_preset_clicked(name)
-            )
+            btn.clicked.connect(lambda _, name=preset_name: self.on_preset_clicked(name))
             self.preset_buttons_layout.addWidget(btn)
         layout.addWidget(self.preset_buttons_widget)
 
+        # Joint sliders with scroll area
         self.form_layout_widget = QWidget()
         form_layout = QFormLayout()
         self.form_layout_widget.setLayout(form_layout)
@@ -122,9 +208,9 @@ class IPInputWindow(QWidget):
 
         for joint_name, limits in self.joint_limits.items():
             slider = QSlider(Qt.Horizontal)
-            slider.setMinimum(limits["min"])
-            slider.setMaximum(limits["max"])
-            slider.setValue(limits.get("default", (limits["min"] + limits["max"]) // 2))
+            slider.setMinimum(int(limits["min"]))
+            slider.setMaximum(int(limits["max"]))
+            slider.setValue(int(limits.get("default", (limits["min"] + limits["max"]) // 2)))
 
             label = QLabel(str(slider.value()))
             self.joint_labels[joint_name] = label
@@ -133,14 +219,10 @@ class IPInputWindow(QWidget):
             h_layout.addWidget(slider)
             h_layout.addWidget(label)
 
-            slider.valueChanged.connect(
-                lambda _, name=joint_name: self.on_joint_slider_changed(name)
-            )
+            slider.valueChanged.connect(lambda value, name=joint_name: self.on_joint_slider_changed(name))
 
             self.joint_sliders[joint_name] = slider
-            form_layout.addRow(
-                f"{joint_name} ({limits['min']}~{limits['max']})", h_layout
-            )
+            form_layout.addRow(f"{joint_name} ({limits['min']}~{limits['max']})", h_layout)
 
         self.form_layout_widget.setVisible(False)
         layout.addWidget(self.scroll_area)
@@ -155,16 +237,13 @@ class IPInputWindow(QWidget):
                 ros.run(timeout=timeout)
                 if ros.is_connected:
                     self.ros = ros
-                    # Wheel publisher
-                    self.wheel_pub = roslibpy.Topic(
-                        self.ros, self.wheel_topic, "std_msgs/Float32MultiArray"
-                    )
+
+                    self.wheel_pub = roslibpy.Topic(self.ros, self.wheel_topic, "std_msgs/Float32MultiArray")
                     self.wheel_pub.advertise()
-                    # Arm publisher
-                    self.arm_pub = roslibpy.Topic(
-                        self.ros, self.arm_topic, "trajectory_msgs/JointTrajectoryPoint"
-                    )
+
+                    self.arm_pub = roslibpy.Topic(self.ros, self.arm_topic, "trajectory_msgs/JointTrajectoryPoint")
                     self.arm_pub.advertise()
+
                     print(f"[INFO] Connected to ROSBridge on attempt {attempt}")
                     return True, ""
                 else:
@@ -215,9 +294,7 @@ class IPInputWindow(QWidget):
             ok, err = self._connect_rosbridge(ip, port)
             if ok:
                 self._set_connected(ip, port)
-                QMessageBox.information(
-                    self, "Success", f"Connected to ROSBridge at ws://{ip}:{port}"
-                )
+                QMessageBox.information(self, "Success", f"Connected to ROSBridge at ws://{ip}:{port}")
             else:
                 QMessageBox.critical(self, "錯誤", f"rosbridge連線失敗: {err}")
         else:
@@ -264,9 +341,7 @@ class IPInputWindow(QWidget):
         if not (self.ros and self.ros.is_connected and self.wheel_pub):
             print("[WARN] ROS not connected, skip wheel speed publish.")
             return
-        msg = roslibpy.Message(
-            {"layout": {"dim": [], "data_offset": 0}, "data": list(map(float, speeds))}
-        )
+        msg = roslibpy.Message({"layout": {"dim": [], "data_offset": 0}, "data": list(map(float, speeds))})
         self.wheel_pub.publish(msg)
 
     def publish_robot_arm(self, joint_values):
@@ -287,29 +362,24 @@ class IPInputWindow(QWidget):
     def send_joint_command(self):
         if not self.connected:
             return
-        joint_values_deg = [
-            self.joint_sliders[j].value() for j in sorted(self.joint_sliders.keys())
-        ]
+        joint_values_deg = [self.joint_sliders[j].value() for j in sorted(self.joint_sliders.keys())]
         joint_values_rad = [math.radians(v) for v in joint_values_deg]
         self.publish_robot_arm(joint_values_rad)
 
     def on_joint_slider_changed(self, joint_name):
         value = self.joint_sliders[joint_name].value()
         self.joint_labels[joint_name].setText(str(value))
-        # Use a timer to avoid sending too many commands
-        # This is a simple way to debounce
-        if hasattr(self, '_joint_timer'):
+        if self._joint_timer is not None:
             self._joint_timer.cancel()
         self._joint_timer = threading.Timer(0.1, self.send_joint_command)
         self._joint_timer.start()
 
-
     def reset_all_joint_sliders(self):
         for joint_name, slider in self.joint_sliders.items():
-            default_val = self.joint_limits[joint_name].get("default", 0)
+            default_val = int(self.joint_limits[joint_name].get("default", 0))
             slider.setValue(default_val)
             self.joint_labels[joint_name].setText(str(default_val))
-        self.send_joint_command() # Send reset position immediately
+        self.send_joint_command()
 
     def on_preset_clicked(self, preset_name):
         if not self.connected:
@@ -321,7 +391,7 @@ class IPInputWindow(QWidget):
             return
         angles_rad = [math.radians(v) for v in angles_deg]
         self.publish_robot_arm(angles_rad)
-        # Update sliders to match preset (best-effort, ordered by joint name)
+
         joint_names = sorted(self.joint_sliders.keys())
         if len(joint_names) == len(angles_deg):
             for joint_name, angle in zip(joint_names, angles_deg):
