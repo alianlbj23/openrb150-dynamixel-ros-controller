@@ -39,12 +39,27 @@ python start_rosbridge_docker.py
 
 Defaults:
 - Image: `ros:jazzy-ros-base` (fallbacks are tried if missing)
-- Container name: `rosbridge_jazzy`
+- Container name: `rosbridge_humble`
 - Host port: `9090` (mapped to container `9090`)
 
-Override options:
+## Docker/build.py (ROSBridge Humble image)
+
+`Docker/build.py` builds a ROSBridge image based on ROS 2 Humble and writes a Dockerfile if missing.
+
+Basic usage (from repo root):
 ```bash
-python start_rosbridge_docker.py --image ros:jazzy --name my_rosbridge --port 9091
+python Docker/build.py
+```
+
+Common options:
+```bash
+python Docker/build.py --tag rosbridge:humble --base ros:humble-ros-base --context .
+python Docker/build.py --no-cache --pull
+```
+
+Run the image after build:
+```bash
+docker run --rm -it --name rosbridge_humble -p 9090:9090 rosbridge:humble
 ```
 
 ## Configuration
