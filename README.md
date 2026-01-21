@@ -29,6 +29,24 @@ pip install -r requirements.txt
 python main.py
 ```
 
+## ROSBridge via Docker (ROS 2 Jazzy)
+
+You can start a ROSBridge websocket server in Docker:
+
+```bash
+python start_rosbridge_docker.py
+```
+
+Defaults:
+- Image: `ros:jazzy-ros-base` (fallbacks are tried if missing)
+- Container name: `rosbridge_jazzy`
+- Host port: `9090` (mapped to container `9090`)
+
+Override options:
+```bash
+python start_rosbridge_docker.py --image ros:jazzy --name my_rosbridge --port 9091
+```
+
 ## Configuration
 
 Edit `keyboard.yaml` to change topics, keyboard mappings, joint limits, and presets.
@@ -60,3 +78,7 @@ python build.py
 ```
 
 The output is placed in `dist/`.
+
+## Docker Ignore
+
+This repo includes `.dockerignore` to reduce build context size for Docker builds.
