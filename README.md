@@ -1,90 +1,62 @@
-# Server Control Panel
+# ROS Control Panel (PyQt5)
 
-This application provides a graphical user interface (GUI) to control a remote server, allowing users to connect, disconnect, and manage services like SLAM and Localization.
+A lightweight GUI to connect to a ROSBridge server, publish wheel commands from keyboard input, and control a robot arm via sliders or preset buttons defined in `keyboard.yaml`.
 
-## Prerequisites
+## Features
 
-*   Python 3.x
-*   The Python packages listed in `requirements.txt`.
+- Connect/disconnect to ROSBridge by IP and port
+- Publish wheel speeds from keyboard shortcuts
+- Publish arm joint angles in radians from sliders
+- One-click arm presets from YAML
+- Joint reset to default positions
+
+## Requirements
+
+- Python 3.x
+- Packages in `requirements.txt`
 
 ## Setup
 
-1.  **Clone the repository or download the files.**
-2.  **Navigate to the project directory:**
-    ```bash
-    cd /path/to/your/project/pros_web_client
-    ```
-3.  **Create a virtual environment (recommended):**
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-    ```
-4.  **Install the required packages:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
 
-## How to Run
+## Run
 
-1.  **Ensure your virtual environment is activated** (if you created one).
-2.  **Run the `main.py` script:**
-    ```bash
-    python main.py
-    ```
-    This will launch the Server Control Panel GUI.
+```bash
+python main.py
+```
 
-## Usage Instructions
+## Configuration
 
-The application window allows you to interact with a server that exposes specific API endpoints (expected to be running on port 5000).
+Edit `keyboard.yaml` to change topics, keyboard mappings, joint limits, and presets.
 
-### 1. Connecting to the Server
+Example sections:
 
-*   **Enter the Server IP:** In the "Server IP" field, type the IP address of the server you want to connect to (e.g., `192.168.0.10`).
-*   **Click "Connect":**
-    *   The application will attempt to connect to `http://<SERVER_IP>:5000/run-script/star_car`.
-    *   If successful, the "Connect" button will change to "Disconnect".
-    *   The "Slam", "Localization", and "Reset" buttons will become visible.
-    *   The connected IP address will be displayed.
-    *   A message will confirm the connection status.
-    *   If the connection fails or the server returns an error, a warning or error message will be displayed.
+- `ros_port`: default ROSBridge port
+- `ros_topics.wheel`: wheel command topic (Float32MultiArray)
+- `ros_topics.arm`: arm command topic (JointTrajectoryPoint)
+- `key_mappings`: keyboard key -> list of wheel speeds (degrees are not used here)
+- `arm_joint_limits`: slider ranges and default values (degrees)
+- `arm_joint_angle_presets`: button name -> list of joint angles (degrees)
 
-### 2. Using Server Functions (After Connecting)
+## Usage
 
-*   **Slam Button:**
-    *   Click "Slam" to start the SLAM service. The application sends a request to `http://<SERVER_IP>:5000/run-script/slam_ydlidar`.
-    *   If successful, the button text changes to "Close Slam", and the "Localization" button is disabled.
-    *   Click "Close Slam" to stop the SLAM service. The application sends a request to `http://<SERVER_IP>:5000/run-script/slam_ydlidar_stop`. The button text reverts to "Slam", and the "Localization" button is re-enabled.
-*   **Localization Button:**
-    *   Click "Localization" to start the localization service. The application sends a request to `http://<SERVER_IP>:5000/run-script/localization_ydlidar`.
-    *   If successful, the button text changes to "Close Localization", and the "Slam" button is disabled.
-    *   Click "Close Localization" to stop the localization service. The application sends a request to `http://<SERVER_IP>:5000/run-script/localization_ydlidar_stop`. The button text reverts to "Localization", and the "Slam" button is re-enabled.
-*   **Reset Button:**
-    *   Click "Reset" to send stop signals for both SLAM and Localization services simultaneously.
-    *   This will also reset the state of the "Slam" and "Localization" buttons in the UI, re-enabling them.
+1. Launch the app and enter ROSBridge IP + port.
+2. Click **Connect** to start publishing.
+3. Use keyboard keys from `key_mappings` to publish wheel speeds.
+4. Adjust sliders to publish arm joint angles (degrees converted to radians).
+5. Click a preset button to publish the preset joint angles (degrees converted to radians).
+6. Click **Reset Joints** to move to default angles.
 
-### 3. Disconnecting from the Server
+## Build (optional)
 
-*   **Click "Disconnect":**
-    *   The application will immediately update the UI to a disconnected state (hiding function buttons, clearing IP, changing button text back to "Connect").
-    *   In the background, it sends a request to `http://<SERVER_IP>:5000/run-script/star_car_stop` to stop the main server service.
+`build.py` creates a single-file executable using PyInstaller:
 
-### Error Handling
+```bash
+python build.py
+```
 
-*   If the IP format is invalid, a warning will be shown.
-*   If connection or script execution requests fail, an error message detailing the issue will be displayed.
-
-## Dependencies
-
-The application relies on the following Python libraries:
-
-*   `requests`: For making HTTP requests to the server.
-*   `PyQt5`: For the graphical user interface.
-
-Refer to `requirements.txt` for specific
-
-## pros_twin
-https://drive.google.com/drive/u/2/folders/1AtqUCTJ7k7NK46fRaCSsYnG2Mxc2r-qv
-
-## Server
-https://github.com/alianlbj23/pros_web_server
-# openrb150-dynamixel-ros-controller
+The output is placed in `dist/`.
