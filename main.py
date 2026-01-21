@@ -39,6 +39,7 @@ class IPInputWindow(QWidget):
             config = yaml.safe_load(f)
             self.key_map = config.get("key_mappings", {})
             self.joint_limits = config.get("arm_joint_limits", {})
+            self.arm_presets = config.get("arm_joint_angle_presets", {})
             self.rosbridge_port = config.get("ros_port", 9090)
             
             # Load topic names from yaml
@@ -97,6 +98,19 @@ class IPInputWindow(QWidget):
         self.btn_reset_joints.clicked.connect(self.reset_all_joint_sliders)
         self.btn_reset_joints.setVisible(False)
         layout.addWidget(self.btn_reset_joints)
+
+        # Preset buttons from yaml
+        self.preset_buttons_widget = QWidget()
+        self.preset_buttons_layout = QHBoxLayout()
+        self.preset_buttons_widget.setLayout(self.preset_buttons_layout)
+        self.preset_buttons_widget.setVisible(False)
+        for preset_name in self.arm_presets.keys():
+            btn = QPushButton(preset_name, self)
+            btn.clicked.connect(
+                lambda _, name=preset_name: self.on_preset_clicked(name)
+            )
+            self.preset_buttons_layout.addWidget(btn)
+        layout.addWidget(self.preset_buttons_widget)
 
         self.form_layout_widget = QWidget()
         form_layout = QFormLayout()
@@ -221,6 +235,7 @@ class IPInputWindow(QWidget):
         self.current_ip_label.setVisible(True)
         self.form_layout_widget.setVisible(True)
         self.btn_reset_joints.setVisible(True)
+        self.preset_buttons_widget.setVisible(True)
         self.key_label.setText("Use keyboard to control the robot")
 
     def _set_disconnected(self):
@@ -232,6 +247,7 @@ class IPInputWindow(QWidget):
         self.current_ip_label.setVisible(False)
         self.form_layout_widget.setVisible(False)
         self.btn_reset_joints.setVisible(False)
+        self.preset_buttons_widget.setVisible(False)
         self.key_label.setText("Press a key to control the robot")
 
     def keyPressEvent(self, event):
@@ -294,6 +310,23 @@ class IPInputWindow(QWidget):
             slider.setValue(default_val)
             self.joint_labels[joint_name].setText(str(default_val))
         self.send_joint_command() # Send reset position immediately
+
+    def on_preset_clicked(self, preset_name):
+        if not self.connected:
+            QMessageBox.warning(self, "Warning", "Not connected to ROSBridge.")
+            return
+        angles_deg = self.arm_presets.get(preset_name, [])
+        if not angles_deg:
+            QMessageBox.warning(self, "Warning", f"Preset '{preset_name}' is empty.")
+            return
+        angles_rad = [math.radians(v) for v in angles_deg]
+        self.publish_robot_arm(angles_rad)
+        # Update sliders to match preset (best-effort, ordered by joint name)
+        joint_names = sorted(self.joint_sliders.keys())
+        if len(joint_names) == len(angles_deg):
+            for joint_name, angle in zip(joint_names, angles_deg):
+                self.joint_sliders[joint_name].setValue(int(angle))
+                self.joint_labels[joint_name].setText(str(int(angle)))
 
     def closeEvent(self, event):
         self._disconnect_rosbridge()
