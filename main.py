@@ -117,6 +117,7 @@ class IPInputWindow(QWidget):
         self.current_ip = ""
         self.wheel_pub = None  # roslibpy.Topic for wheel
         self.arm_pub = None  # roslibpy.Topic for arm joints
+        self.arm_angles_pub = None  # roslibpy.Topic for arm angle array
         self.ros = None  # roslibpy.Ros object
 
         base_dir = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
@@ -128,10 +129,12 @@ class IPInputWindow(QWidget):
             self.joint_limits = config.get("arm_joint_limits", {})
             self.arm_presets = config.get("arm_joint_angle_presets", {})
             self.rosbridge_port = int(config.get("ros_port", 9090))
+            self.arm_publish_in_radians = bool(config.get("arm_publish_in_radians", True))
 
             ros_topics = config.get("ros_topics", {})
             self.wheel_topic = ros_topics.get("wheel", "/car_C_rear_wheel")
             self.arm_topic = ros_topics.get("arm", "/robot_arm")
+            self.arm_angles_topic = ros_topics.get("arm_angles", "/robot_arm_angles")
 
         self.joint_sliders: dict[str, QSlider] = {}
         self.joint_labels: dict[str, QLabel] = {}
@@ -243,6 +246,10 @@ class IPInputWindow(QWidget):
 
                     self.arm_pub = roslibpy.Topic(self.ros, self.arm_topic, "trajectory_msgs/JointTrajectoryPoint")
                     self.arm_pub.advertise()
+                    self.arm_angles_pub = roslibpy.Topic(
+                        self.ros, self.arm_angles_topic, "std_msgs/Float32MultiArray"
+                    )
+                    self.arm_angles_pub.advertise()
 
                     print(f"[INFO] Connected to ROSBridge on attempt {attempt}")
                     return True, ""
@@ -267,6 +274,12 @@ class IPInputWindow(QWidget):
             except Exception as e:
                 print(f"Error unadvertising arm_pub: {e}")
             self.arm_pub = None
+        if self.arm_angles_pub:
+            try:
+                self.arm_angles_pub.unadvertise()
+            except Exception as e:
+                print(f"Error unadvertising arm_angles_pub: {e}")
+            self.arm_angles_pub = None
 
         if self.ros and self.ros.is_connected:
             try:
@@ -358,13 +371,21 @@ class IPInputWindow(QWidget):
             }
         )
         self.arm_pub.publish(msg)
+        self.publish_arm_angles_array(joint_values)
+
+    def publish_arm_angles_array(self, joint_values):
+        if not (self.ros and self.ros.is_connected and self.arm_angles_pub):
+            print("[WARN] ROS not connected, skip arm_angles publish.")
+            return
+        msg = roslibpy.Message({"layout": {"dim": [], "data_offset": 0}, "data": list(map(float, joint_values))})
+        self.arm_angles_pub.publish(msg)
 
     def send_joint_command(self):
         if not self.connected:
             return
         joint_values_deg = [self.joint_sliders[j].value() for j in sorted(self.joint_sliders.keys())]
-        joint_values_rad = [math.radians(v) for v in joint_values_deg]
-        self.publish_robot_arm(joint_values_rad)
+        joint_values = self._convert_joint_values(joint_values_deg)
+        self.publish_robot_arm(joint_values)
 
     def on_joint_slider_changed(self, joint_name):
         value = self.joint_sliders[joint_name].value()
@@ -389,8 +410,8 @@ class IPInputWindow(QWidget):
         if not angles_deg:
             QMessageBox.warning(self, "Warning", f"Preset '{preset_name}' is empty.")
             return
-        angles_rad = [math.radians(v) for v in angles_deg]
-        self.publish_robot_arm(angles_rad)
+        angles = self._convert_joint_values(angles_deg)
+        self.publish_robot_arm(angles)
 
         joint_names = sorted(self.joint_sliders.keys())
         if len(joint_names) == len(angles_deg):
@@ -401,6 +422,11 @@ class IPInputWindow(QWidget):
     def closeEvent(self, event):
         self._disconnect_rosbridge()
         event.accept()
+
+    def _convert_joint_values(self, values_deg):
+        if self.arm_publish_in_radians:
+            return [math.radians(v) for v in values_deg]
+        return list(map(float, values_deg))
 
     @staticmethod
     def validate_ip(ip: str) -> bool:
