@@ -39,8 +39,12 @@ class IPInputWindow(QWidget):
             config = yaml.safe_load(f)
             self.key_map = config.get("key_mappings", {})
             self.joint_limits = config.get("arm_joint_limits", {})
-            # Load port from yaml, default to 9090 if not found
             self.rosbridge_port = config.get("ros_port", 9090)
+            
+            # Load topic names from yaml
+            ros_topics = config.get("ros_topics", {})
+            self.wheel_topic = ros_topics.get("wheel", "/car_C_rear_wheel")
+            self.arm_topic = ros_topics.get("arm", "/robot_arm")
 
         self.joint_sliders = {}
         self.joint_labels = {}
@@ -139,12 +143,12 @@ class IPInputWindow(QWidget):
                     self.ros = ros
                     # Wheel publisher
                     self.wheel_pub = roslibpy.Topic(
-                        self.ros, "/car_C_rear_wheel", "std_msgs/Float32MultiArray"
+                        self.ros, self.wheel_topic, "std_msgs/Float32MultiArray"
                     )
                     self.wheel_pub.advertise()
                     # Arm publisher
                     self.arm_pub = roslibpy.Topic(
-                        self.ros, "/robot_arm", "trajectory_msgs/JointTrajectoryPoint"
+                        self.ros, self.arm_topic, "trajectory_msgs/JointTrajectoryPoint"
                     )
                     self.arm_pub.advertise()
                     print(f"[INFO] Connected to ROSBridge on attempt {attempt}")
@@ -201,7 +205,7 @@ class IPInputWindow(QWidget):
                     self, "Success", f"Connected to ROSBridge at ws://{ip}:{port}"
                 )
             else:
-                QMessageBox.critical(self, "Error", f"Failed to connect to ROSBridge: {err}")
+                QMessageBox.critical(self, "錯誤", f"rosbridge連線失敗: {err}")
         else:
             self._disconnect_rosbridge()
             self._set_disconnected()

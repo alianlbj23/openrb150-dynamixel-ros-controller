@@ -1,5 +1,9 @@
 ros_port: 9090
 
+ros_topics:
+  wheel: /car_C_rear_wheel
+  arm: /robot_arm
+
 key_mappings:
   w: [30, 30, 30, 30]
   s: [-30, -30, -30, -30]
