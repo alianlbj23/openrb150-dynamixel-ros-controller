@@ -17,7 +17,7 @@ Follow these steps in order:
 This creates or uses a Dockerfile at docker/Dockerfile.rosbridge-humble and builds an image tagged rosbridge:humble by default. Useful flags:
 
 ```bash
-python Docker/build.py 
+    python Docker/build.py --tag rosbridge:humble --base ros:humble-ros-base --no-cache --pull
 ```
 
 2) Start ROSBridge in Docker:
